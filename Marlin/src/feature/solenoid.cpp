@@ -1,6 +1,6 @@
 /**
  * Marlin 3D Printer Firmware
- * Copyright (c) 2019 MarlinFirmware [https://github.com/MarlinFirmware/Marlin]
+ * Copyright (c) 2020 MarlinFirmware [https://github.com/MarlinFirmware/Marlin]
  *
  * Based on Sprinter and grbl.
  * Copyright (c) 2011 Camiel Gubbels / Erik van der Zalm
@@ -16,7 +16,7 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  *
  */
 
@@ -28,22 +28,29 @@
 
 #include "../module/motion.h" // for active_extruder
 
-#if ENABLED(MANUAL_SOLENOID_CONTROL)
-  #define HAS_SOLENOID(N) HAS_SOLENOID_##N
+// PARKING_EXTRUDER options alter the default behavior of solenoids, this ensures compliance of M380-381
+
+#if ENABLED(PARKING_EXTRUDER)
+  #include "../module/tool_change.h"
+  #define SOLENOID_MAGNETIZED_STATE (TERN_(PARKING_EXTRUDER_SOLENOIDS_INVERT,!)PARKING_EXTRUDER_SOLENOIDS_PINS_ACTIVE)
 #else
-  #define HAS_SOLENOID(N) (HAS_SOLENOID_##N && EXTRUDERS > N)
+  #define SOLENOID_MAGNETIZED_STATE HIGH
 #endif
+
+#define HAS_SOLENOID(N) (HAS_SOLENOID_##N && TERN(MANUAL_SOLENOID_CONTROL, true, EXTRUDERS > N))
 
 // Used primarily with MANUAL_SOLENOID_CONTROL
 static void set_solenoid(const uint8_t num, const bool active) {
-  const uint8_t value = active ? HIGH : LOW;
+  const uint8_t value = active ? SOLENOID_MAGNETIZED_STATE : !SOLENOID_MAGNETIZED_STATE;
   switch (num) {
     case 0:
       OUT_WRITE(SOL0_PIN, value);
+      TERN_(PARKING_EXTRUDER, if (!active && active_extruder == 0) parking_extruder_set_parked()); // If active extruder's solenoid is disabled, carriage is considered parked
       break;
     #if HAS_SOLENOID(1)
       case 1:
         OUT_WRITE(SOL1_PIN, value);
+        TERN_(PARKING_EXTRUDER, if (!active && active_extruder == 1) parking_extruder_set_parked()); // If active extruder's solenoid is disabled, carriage is considered parked
         break;
     #endif
     #if HAS_SOLENOID(2)
@@ -67,7 +74,7 @@ static void set_solenoid(const uint8_t num, const bool active) {
         break;
     #endif
     default:
-      SERIAL_ECHO_MSG(MSG_INVALID_SOLENOID);
+      SERIAL_ECHO_MSG(STR_INVALID_SOLENOID);
       break;
   }
 }
